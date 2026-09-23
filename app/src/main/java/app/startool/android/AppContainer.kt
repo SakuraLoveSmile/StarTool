@@ -2,8 +2,9 @@ package app.startool.android
 
 import android.content.Context
 import app.startool.android.domain.BackupFileGateway
+import app.startool.android.data.RoomStarToolRepository
 import app.startool.android.domain.StarToolRepository
-import app.startool.android.fake.FakeStarToolRepository
+import app.startool.android.data.StarToolDatabase
 import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +40,12 @@ class AppContainer(context: Context) {
      * 集成后改为 RoomStarToolRepository，并把 maintenance 传入构造函数。
      */
     val repository: StarToolRepository by lazy {
-        FakeStarToolRepository(clock = clock)
+        val db = StarToolDatabase.getInstance(appContext)
+        RoomStarToolRepository(
+            database = db,
+            clock = clock,
+            maintenance = maintenance,
+        )
     }
 
     /**
