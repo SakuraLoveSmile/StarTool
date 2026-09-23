@@ -81,7 +81,7 @@ fun StarToolRoot(container: AppContainer) {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = if (settingsOpen) "设置" else "StarTool",
+                        text = if (settingsOpen) "设置" else "StarTool (Gemini)",
                         style = StarToolType.PageTitle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
