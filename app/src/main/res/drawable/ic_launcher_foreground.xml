@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 居中的五角星，纸质记录本风格 -->
+    <path
+        android:fillColor="#FAF8F3"
+        android:pathData="M54,32 L60.6,47.4 L77.4,48.7 L65.2,59.6 L68.6,76.2 L54,67.4 L39.4,76.2 L42.8,59.6 L30.6,48.7 L47.4,47.4 Z" />
+</vector>
