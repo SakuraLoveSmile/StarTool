@@ -85,7 +85,8 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     implementation(libs.coroutines.android)
-
+    implementation(libs.coroutines.android)
+    implementation(libs.androidx.webkit)
     ksp(libs.room.compiler)
 
     debugImplementation(libs.compose.ui.tooling)
@@ -101,4 +102,39 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
+}
+
+val manifestAppId = android.defaultConfig.applicationId ?: "app.startool.android.gemini"
+val manifestVersionCode = android.defaultConfig.versionCode ?: 1
+val manifestVersionName = android.defaultConfig.versionName ?: "0.1.0"
+val manifestMinSdk = android.defaultConfig.minSdk ?: 26
+val manifestOutputDir = layout.buildDirectory.dir("outputs")
+
+tasks.register("generateUpdateManifest") {
+    description = "根据当前构建元数据生成发布清单 startool-update.json"
+    group = "publishing"
+    val outDir = manifestOutputDir
+    val id = manifestAppId
+    val code = manifestVersionCode
+    val name = manifestVersionName
+    val minSdk = manifestMinSdk
+    doLast {
+        val releaseUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/tag/v$name"
+        val manifestJson = """
+        {
+          "schemaVersion": 1,
+          "applicationId": "$id",
+          "versionCode": $code,
+          "versionName": "$name",
+          "minSdk": $minSdk,
+          "notes": "StarTool $name 版本发布",
+          "releaseUrl": "$releaseUrl"
+        }
+        """.trimIndent()
+        val targetDir = outDir.get().asFile
+        targetDir.mkdirs()
+        val outFile = File(targetDir, "startool-update.json")
+        outFile.writeText(manifestJson)
+        println("Generated update manifest: ${outFile.absolutePath}")
+    }
 }

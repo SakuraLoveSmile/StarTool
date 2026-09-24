@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 首版不申请任何权限：无网络、通知、定位、通讯录或存储权限。 -->
+    <!-- 网络权限：仅用于检查更新与 Feedback 问题反馈，主记录和历史数据继续保持 100% 本地离线。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".StarToolApplication"

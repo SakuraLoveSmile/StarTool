@@ -71,6 +71,57 @@ class AppContainer(context: Context) {
      * 由 backup 模块（导出/恢复流程）调用 runExclusive。
      */
     val maintenance: MaintenanceLock = MaintenanceLock()
+
+    val updatePreferenceStore: app.startool.android.update.UpdatePreferenceStore by lazy {
+        val sp = appContext.getSharedPreferences("startool_update_prefs", Context.MODE_PRIVATE)
+        app.startool.android.update.UpdatePreferenceStore(sp)
+    }
+
+    val currentVersionCode: Int by lazy {
+        try {
+            val pInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pInfo.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode
+            }
+        } catch (t: Throwable) {
+            1
+        }
+    }
+
+    val currentVersionName: String by lazy {
+        try {
+            val pInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+            pInfo.versionName ?: "0.1.0"
+        } catch (t: Throwable) {
+            "0.1.0"
+        }
+    }
+
+    val updateChecker: app.startool.android.update.UpdateChecker by lazy {
+        app.startool.android.update.UpdateChecker(
+            preferenceStore = updatePreferenceStore,
+            currentApplicationId = appContext.packageName,
+            currentVersionCode = currentVersionCode,
+            currentVersionName = currentVersionName,
+        )
+    }
+
+    val feedbackManager: app.startool.android.feedback.FeedbackManager by lazy {
+        app.startool.android.feedback.FeedbackManager(appContext)
+    }
+
+    /** 当前活动的 Activity，弱引用避免内存泄漏 */
+    @Volatile
+    private var _currentActivityRef: java.lang.ref.WeakReference<android.app.Activity>? = null
+
+    var currentActivity: android.app.Activity?
+        get() = _currentActivityRef?.get()
+        set(value) {
+            _currentActivityRef = if (value != null) java.lang.ref.WeakReference(value) else null
+        }
 }
 
 class MaintenanceLock {

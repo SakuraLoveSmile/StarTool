@@ -1,0 +1,13 @@
+{
+  "sourcePackage": "@feedback/web",
+  "version": "0.5.2",
+  "buildDate": "2026-09-23",
+  "artifacts": {
+    "feedback-web.js": {
+      "sha256": "10ac2bee5c049b0df74a9eb290629a43b9af12032ef100f7bbd5564775008a8e"
+    },
+    "feedback-web.umd.js": {
+      "sha256": "9b25372b60be4b209fd760f855543fa05a97633b27dc8a372f17960bdfa99803"
+    }
+  }
+}

@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        container.currentActivity = this
         container.fileGateway = SafBackupFileGateway()
 
         setContent {
@@ -55,12 +56,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (container.fileGateway === null) return
-        pendingSave?.complete(null)
-        pendingOpen?.complete(null)
-        pendingSave = null
-        pendingOpen = null
-        container.fileGateway = null
+        if (container.currentActivity === this) {
+            container.currentActivity = null
+        }
+        if (container.fileGateway !== null) {
+            pendingSave?.complete(null)
+            pendingOpen?.complete(null)
+            pendingSave = null
+            pendingOpen = null
+            container.fileGateway = null
+        }
     }
 
     /** SAF 桥接实现（计划 §5 / §6.2 BackupFileGateway）。 */

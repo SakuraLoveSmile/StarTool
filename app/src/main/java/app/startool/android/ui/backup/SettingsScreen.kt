@@ -39,7 +39,13 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.TextButton
+import android.content.Intent
+import android.net.Uri
+import app.startool.android.update.model.UpdateCheckResult
+import app.startool.android.update.model.UpdateManifest
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -69,6 +75,11 @@ import app.startool.android.domain.ImportReport
 import app.startool.android.ui.theme.StarToolColors
 import app.startool.android.ui.theme.StarToolDimens
 import app.startool.android.ui.theme.StarToolType
+import app.startool.android.update.model.UpdateProxySource
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
@@ -96,6 +107,15 @@ fun SettingsScreen(
     var currentPlan by remember { mutableStateOf<ImportPlan?>(null) }
     var importResultReport by remember { mutableStateOf<ImportReport?>(null) }
 
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateStatusText by remember { mutableStateOf<String?>(null) }
+    var updateCheckResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    var activeUpdateManifest by remember { mutableStateOf<UpdateManifest?>(null) }
+    var autoCheckEnabledState by remember { mutableStateOf(container.updatePreferenceStore.autoCheckEnabled) }
+    var proxySourceState by remember { mutableStateOf(container.updatePreferenceStore.proxySource) }
+    var customProxyPrefixState by remember { mutableStateOf(container.updatePreferenceStore.customProxyPrefix) }
+    var showProxyMenu by remember { mutableStateOf(false) }
+    val fabEnabled by container.feedbackManager.fabEnabled.collectAsState()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -296,6 +316,290 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(Modifier.height(StarToolDimens.SpaceLg))
+
+        // 检查更新卡片（计划 §T1）
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("settings_update_card"),
+            shape = RoundedCornerShape(StarToolDimens.CardCornerRadius),
+            colors = CardDefaults.cardColors(containerColor = StarToolColors.Surface),
+            border = BorderStroke(StarToolDimens.CardBorderWidth, StarToolColors.CardBorder),
+        ) {
+            Column(modifier = Modifier.padding(StarToolDimens.CardPadding)) {
+                Text(
+                    text = "版本与更新",
+                    style = StarToolType.HourTitle,
+                    color = StarToolColors.TextPrimary,
+                )
+                Spacer(Modifier.height(StarToolDimens.SpaceXs))
+                Text(
+                    text = "当前版本：0.1.0 (versionCode 1)\n发布来源：SakuraLoveSmile/StarTool 稳定版 Releases",
+                    style = StarToolType.Caption,
+                    color = StarToolColors.TextSecondary,
+                )
+                Spacer(Modifier.height(StarToolDimens.SpaceMd))
+
+                // 自动检查更新开关
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("启动时自动检查更新", style = StarToolType.Body)
+                        Text(
+                            text = "开启后每天至多自动检测一次，发现新版时不遮挡使用。",
+                            style = StarToolType.Caption,
+                            color = StarToolColors.TextSecondary,
+                        )
+                    }
+                    Spacer(Modifier.width(StarToolDimens.SpaceSm))
+                    Switch(
+                        checked = autoCheckEnabledState,
+                        onCheckedChange = { checked ->
+                            autoCheckEnabledState = checked
+                            container.updatePreferenceStore.autoCheckEnabled = checked
+                        },
+                        modifier = Modifier.testTag("settings_update_auto_switch"),
+                    )
+                }
+                Spacer(Modifier.height(StarToolDimens.SpaceMd))
+
+                // 下载加速 / 镜像源选择
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("更新下载源 / 镜像加速", style = StarToolType.Body)
+                    Text(
+                        text = "国内网络可切换至代理镜像源，加速版本检测与安装包下载。",
+                        style = StarToolType.Caption,
+                        color = StarToolColors.TextSecondary,
+                    )
+                    Spacer(Modifier.height(StarToolDimens.SpaceSm))
+
+                    Box {
+                        OutlinedButton(
+                            onClick = { showProxyMenu = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_update_proxy_selector"),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text(proxySourceState.displayName, style = StarToolType.Body)
+                        }
+                        DropdownMenu(
+                            expanded = showProxyMenu,
+                            onDismissRequest = { showProxyMenu = false },
+                        ) {
+                            UpdateProxySource.entries.forEach { source ->
+                                DropdownMenuItem(
+                                    text = { Text(source.displayName, style = StarToolType.Body) },
+                                    onClick = {
+                                        proxySourceState = source
+                                        container.updatePreferenceStore.proxySource = source
+                                        showProxyMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    if (proxySourceState == UpdateProxySource.Custom) {
+                        Spacer(Modifier.height(StarToolDimens.SpaceSm))
+                        OutlinedTextField(
+                            value = customProxyPrefixState,
+                            onValueChange = { input ->
+                                customProxyPrefixState = input
+                                container.updatePreferenceStore.customProxyPrefix = input
+                            },
+                            label = { Text("代理前缀（例如 https://ghproxy.net/）", style = StarToolType.Caption) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_update_custom_proxy_input"),
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(StarToolDimens.SpaceMd))
+                // 状态说明文本
+                if (updateStatusText != null) {
+                    Text(
+                        text = updateStatusText.orEmpty(),
+                        style = StarToolType.Caption,
+                        color = if (updateCheckResult is UpdateCheckResult.NetworkError || updateCheckResult is UpdateCheckResult.InvalidManifest) StarToolColors.Error else StarToolColors.TextPrimary,
+                        modifier = Modifier.testTag("settings_update_status"),
+                    )
+                    Spacer(Modifier.height(StarToolDimens.SpaceSm))
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(StarToolDimens.SpaceSm),
+                ) {
+                    // 手动检查按钮
+                    Button(
+                        onClick = {
+                            isCheckingUpdate = true
+                            updateStatusText = "正在检查更新..."
+                            scope.launch {
+                                val res = container.updateChecker.checkUpdate(isManual = true)
+                                isCheckingUpdate = false
+                                updateCheckResult = res
+                                when (res) {
+                                    is UpdateCheckResult.UpdateAvailable -> {
+                                        updateStatusText = "发现新版本：${res.manifest.versionName}"
+                                        activeUpdateManifest = res.manifest
+                                    }
+                                    is UpdateCheckResult.UpToDate -> {
+                                        updateStatusText = "当前已是最新版本"
+                                    }
+                                    is UpdateCheckResult.NoReleaseFound -> {
+                                        updateStatusText = "尚未发布正式版本"
+                                    }
+                                    is UpdateCheckResult.IncompatibleSystem -> {
+                                        updateStatusText = "新版本暂不兼容当前系统（需 Android API ${res.minSdk}+）"
+                                    }
+                                    is UpdateCheckResult.NetworkError -> {
+                                        updateStatusText = "检查更新失败：${res.message}"
+                                    }
+                                    is UpdateCheckResult.InvalidManifest -> {
+                                        updateStatusText = "版本清单验证失败：${res.message}"
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isCheckingUpdate,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = StarToolDimens.ButtonMinHeight)
+                            .testTag("settings_update_check_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = StarToolColors.Primary),
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(StarToolDimens.SpaceSm))
+                            Text("正在检查...", style = StarToolType.Body)
+                        } else {
+                            Text("检查新版本", style = StarToolType.Body)
+                        }
+                    }
+
+                    // 若失败提供重试按钮
+                    if (updateCheckResult is UpdateCheckResult.NetworkError || updateCheckResult is UpdateCheckResult.InvalidManifest) {
+                        OutlinedButton(
+                            onClick = {
+                                isCheckingUpdate = true
+                                updateStatusText = "正在重试..."
+                                scope.launch {
+                                    val res = container.updateChecker.checkUpdate(isManual = true)
+                                    isCheckingUpdate = false
+                                    updateCheckResult = res
+                                    when (res) {
+                                        is UpdateCheckResult.UpdateAvailable -> {
+                                            updateStatusText = "发现新版本：${res.manifest.versionName}"
+                                            activeUpdateManifest = res.manifest
+                                        }
+                                        is UpdateCheckResult.UpToDate -> {
+                                            updateStatusText = "当前已是最新版本"
+                                        }
+                                        is UpdateCheckResult.NoReleaseFound -> {
+                                            updateStatusText = "尚未发布正式版本"
+                                        }
+                                        is UpdateCheckResult.IncompatibleSystem -> {
+                                            updateStatusText = "新版本暂不兼容当前系统"
+                                        }
+                                        is UpdateCheckResult.NetworkError -> {
+                                            updateStatusText = "重试失败：${res.message}"
+                                        }
+                                        is UpdateCheckResult.InvalidManifest -> {
+                                            updateStatusText = "清单验证失败：${res.message}"
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdate,
+                            modifier = Modifier
+                                .heightIn(min = StarToolDimens.ButtonMinHeight)
+                                .testTag("settings_update_retry_button"),
+                        ) {
+                            Text("重试", style = StarToolType.Body)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(StarToolDimens.SpaceLg))
+
+        // 帮助与反馈卡片（计划 §T2）
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("settings_feedback_card"),
+            shape = RoundedCornerShape(StarToolDimens.CardCornerRadius),
+            colors = CardDefaults.cardColors(containerColor = StarToolColors.Surface),
+            border = BorderStroke(StarToolDimens.CardBorderWidth, StarToolColors.CardBorder),
+        ) {
+            Column(modifier = Modifier.padding(StarToolDimens.CardPadding)) {
+                Text(
+                    text = "帮助与反馈",
+                    style = StarToolType.HourTitle,
+                    color = StarToolColors.TextPrimary,
+                )
+                Spacer(Modifier.height(StarToolDimens.SpaceXs))
+                Text(
+                    text = "遇到任何使用疑惑、崩溃问题或改进想法，可在此提交反馈或查看回复。反馈服务提供安全的会话与日志脱敏保护。",
+                    style = StarToolType.Caption,
+                    color = StarToolColors.TextSecondary,
+                )
+                Spacer(Modifier.height(StarToolDimens.SpaceMd))
+
+                // 悬浮球开关
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("显示快捷反馈悬浮球", style = StarToolType.Body)
+                        Text(
+                            text = "在记录与回看页面显示右侧快捷悬浮球，点击可一键自动截屏并快速反馈。",
+                            style = StarToolType.Caption,
+                            color = StarToolColors.TextSecondary,
+                        )
+                    }
+                    Spacer(Modifier.width(StarToolDimens.SpaceSm))
+                    Switch(
+                        checked = fabEnabled,
+                        onCheckedChange = { checked ->
+                            container.feedbackManager.setFabEnabled(checked)
+                        },
+                        modifier = Modifier.testTag("settings_feedback_fab_switch"),
+                    )
+                }
+
+                Spacer(Modifier.height(StarToolDimens.SpaceMd))
+
+                Button(
+                    onClick = {
+                        // 从设置打开不截屏
+                        container.feedbackManager.openFromSettings("设置")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = StarToolDimens.ButtonMinHeight)
+                        .testTag("settings_feedback_entry"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0071E3)),
+                ) {
+                    Text("打开问题反馈面板", style = StarToolType.Body)
+                }
+            }
+        }
         Spacer(Modifier.height(StarToolDimens.SpaceXl))
     }
 
@@ -346,6 +650,80 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { importResultReport = null }) {
                     Text("完成", style = StarToolType.Body)
+                }
+            },
+        )
+    }
+
+    // 更新详情对话框（计划 §T1 / 契约 §4）
+    val updateManifest = activeUpdateManifest
+    if (updateManifest != null) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        AlertDialog(
+            onDismissRequest = { activeUpdateManifest = null },
+            modifier = Modifier.testTag("update_dialog"),
+            title = {
+                Text(
+                    text = "发现新版本 ${updateManifest.versionName}",
+                    style = StarToolType.HourTitle,
+                    modifier = Modifier.testTag("update_dialog_title"),
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "更新说明：\n" + updateManifest.notes,
+                        style = StarToolType.Body,
+                        modifier = Modifier.testTag("update_dialog_notes"),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        activeUpdateManifest = null
+                        try {
+                            val targetUrl = container.updateChecker.getEffectiveReleaseUrl(updateManifest)
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            ctx.startActivity(intent)
+                        } catch (t: Throwable) {
+                            scope.launch { showSnackbar("无法调起浏览器下载") }
+                        }
+                    },
+                    modifier = Modifier.testTag("update_dialog_download"),
+                    colors = ButtonDefaults.buttonColors(containerColor = StarToolColors.Primary),
+                ) {
+                    Text("前往下载", style = StarToolType.Body)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(StarToolDimens.SpaceXs)) {
+                    TextButton(
+                        onClick = {
+                            activeUpdateManifest = null
+                            container.updateChecker.markRemindLater()
+                        },
+                        modifier = Modifier.testTag("update_dialog_remind_later"),
+                    ) {
+                        Text("稍后提醒", style = StarToolType.Caption)
+                    }
+                    TextButton(
+                        onClick = {
+                            activeUpdateManifest = null
+                            container.updateChecker.ignoreVersion(updateManifest.versionCode)
+                        },
+                        modifier = Modifier.testTag("update_dialog_ignore"),
+                    ) {
+                        Text("忽略此版本", style = StarToolType.Caption)
+                    }
+                    TextButton(
+                        onClick = { activeUpdateManifest = null },
+                        modifier = Modifier.testTag("update_dialog_close"),
+                    ) {
+                        Text("关闭", style = StarToolType.Caption)
+                    }
                 }
             },
         )
