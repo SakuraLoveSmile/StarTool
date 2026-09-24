@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-36"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon --stacktrace assembleRelease generateUpdateManifest
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/app-release.apk
+          cp app/build/outputs/startool-update.json dist/startool-update.json
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            mv dist/app-release.apk "dist/StarTool-${GITHUB_REF_NAME}-release.apk"
+          else
+            mv dist/app-release.apk "dist/StarTool-${GITHUB_RUN_NUMBER}-release.apk"
+          fi
+          cd dist
+          sha256sum *.apk startool-update.json > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -l
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: startool-release
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: StarTool ${{ github.ref_name }}
+          files: |
+            dist/*.apk
+            dist/startool-update.json
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
