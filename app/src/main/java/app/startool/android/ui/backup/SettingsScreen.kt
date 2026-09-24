@@ -45,8 +45,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.TextButton
-import android.content.Intent
-import android.net.Uri
 import app.startool.android.update.model.UpdateCheckResult
 import app.startool.android.update.model.UpdateDownloadState
 import app.startool.android.update.model.UpdateManifest
@@ -80,6 +78,8 @@ import app.startool.android.ui.theme.StarToolColors
 import app.startool.android.ui.theme.StarToolDimens
 import app.startool.android.ui.theme.StarToolType
 import app.startool.android.ui.update.UpdateProgressSection
+import app.startool.android.ui.update.UpdateDialog
+import app.startool.android.ui.update.rememberUpdateDownloadAction
 import app.startool.android.update.model.UpdateProxySource
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
@@ -131,6 +131,9 @@ fun SettingsScreen(
             container.updateDownloadManager.onInstallPermissionGranted()
         }
     }
+
+    // P4：统一的「下载更新」动作（优先应用内下载，拿不到官方直链时降级跳浏览器）
+    val downloadUpdate = rememberUpdateDownloadAction(container, showSnackbar)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -707,80 +710,25 @@ fun SettingsScreen(
     }
 
     // 更新详情对话框（计划 §T1 / 契约 §4）
+    // P4：与首页更新横幅共用 ui/update/UpdateDialog，下载逻辑收敛到 UpdateDownloadAction
     val updateManifest = activeUpdateManifest
     if (updateManifest != null) {
-        val ctx = androidx.compose.ui.platform.LocalContext.current
-        AlertDialog(
-            onDismissRequest = { activeUpdateManifest = null },
-            modifier = Modifier.testTag("update_dialog"),
-            title = {
-                Text(
-                    text = "发现新版本 ${updateManifest.versionName}",
-                    style = StarToolType.HourTitle,
-                    modifier = Modifier.testTag("update_dialog_title"),
-                )
+        UpdateDialog(
+            manifest = updateManifest,
+            onDownload = {
+                // 优先应用内下载；清单没有可用官方直链时降级为跳浏览器
+                downloadUpdate(updateManifest)
+                activeUpdateManifest = null
             },
-            text = {
-                Column {
-                    Text(
-                        text = "更新说明：\n" + updateManifest.notes,
-                        style = StarToolType.Body,
-                        modifier = Modifier.testTag("update_dialog_notes"),
-                    )
-                }
+            onRemindLater = {
+                activeUpdateManifest = null
+                container.updateChecker.markRemindLater()
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // 优先应用内下载（P2）；清单没有可用官方直链时降级为跳浏览器
-                        val started = container.updateDownloadManager.start(updateManifest)
-                        activeUpdateManifest = null
-                        if (!started) {
-                            try {
-                                val targetUrl = container.updateChecker.getEffectiveReleaseUrl(updateManifest)
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                ctx.startActivity(intent)
-                            } catch (t: Throwable) {
-                                scope.launch { showSnackbar("无法调起浏览器下载") }
-                            }
-                        }
-                    },
-                    modifier = Modifier.testTag("update_dialog_download"),
-                    colors = ButtonDefaults.buttonColors(containerColor = StarToolColors.Primary),
-                ) {
-                    Text("下载更新", style = StarToolType.Body)
-                }
+            onIgnore = {
+                activeUpdateManifest = null
+                container.updateChecker.ignoreVersion(updateManifest.versionCode)
             },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(StarToolDimens.SpaceXs)) {
-                    TextButton(
-                        onClick = {
-                            activeUpdateManifest = null
-                            container.updateChecker.markRemindLater()
-                        },
-                        modifier = Modifier.testTag("update_dialog_remind_later"),
-                    ) {
-                        Text("稍后提醒", style = StarToolType.Caption)
-                    }
-                    TextButton(
-                        onClick = {
-                            activeUpdateManifest = null
-                            container.updateChecker.ignoreVersion(updateManifest.versionCode)
-                        },
-                        modifier = Modifier.testTag("update_dialog_ignore"),
-                    ) {
-                        Text("忽略此版本", style = StarToolType.Caption)
-                    }
-                    TextButton(
-                        onClick = { activeUpdateManifest = null },
-                        modifier = Modifier.testTag("update_dialog_close"),
-                    ) {
-                        Text("关闭", style = StarToolType.Caption)
-                    }
-                }
-            },
+            onDismiss = { activeUpdateManifest = null },
         )
     }
 }
