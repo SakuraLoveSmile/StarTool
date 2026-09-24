@@ -75,6 +75,7 @@ import app.startool.android.domain.ImportReport
 import app.startool.android.ui.theme.StarToolColors
 import app.startool.android.ui.theme.StarToolDimens
 import app.startool.android.ui.theme.StarToolType
+import app.startool.android.ui.update.UpdateProgressSection
 import app.startool.android.update.model.UpdateProxySource
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
@@ -116,6 +117,8 @@ fun SettingsScreen(
     var customProxyPrefixState by remember { mutableStateOf(container.updatePreferenceStore.customProxyPrefix) }
     var showProxyMenu by remember { mutableStateOf(false) }
     val fabEnabled by container.feedbackManager.fabEnabled.collectAsState()
+    // P2：应用内下载状态。由 container 单例持有，离开设置页不会丢失。
+    val downloadState by container.updateDownloadManager.state.collectAsState()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -531,6 +534,17 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                Spacer(Modifier.height(StarToolDimens.SpaceSm))
+
+                // P2：应用内下载进度 / 失败重试。状态由 container 单例持有，
+                // 离开设置页再回来不会丢失。
+                UpdateProgressSection(
+                    state = downloadState,
+                    onCancel = { container.updateDownloadManager.cancel() },
+                    onRetry = { container.updateDownloadManager.retry() },
+                    modifier = Modifier.testTag("settings_update_download_section"),
+                )
             }
         }
 
@@ -681,21 +695,25 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        // 优先应用内下载（P2）；清单没有可用官方直链时降级为跳浏览器
+                        val started = container.updateDownloadManager.start(updateManifest)
                         activeUpdateManifest = null
-                        try {
-                            val targetUrl = container.updateChecker.getEffectiveReleaseUrl(updateManifest)
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        if (!started) {
+                            try {
+                                val targetUrl = container.updateChecker.getEffectiveReleaseUrl(updateManifest)
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                ctx.startActivity(intent)
+                            } catch (t: Throwable) {
+                                scope.launch { showSnackbar("无法调起浏览器下载") }
                             }
-                            ctx.startActivity(intent)
-                        } catch (t: Throwable) {
-                            scope.launch { showSnackbar("无法调起浏览器下载") }
                         }
                     },
                     modifier = Modifier.testTag("update_dialog_download"),
                     colors = ButtonDefaults.buttonColors(containerColor = StarToolColors.Primary),
                 ) {
-                    Text("前往下载", style = StarToolType.Body)
+                    Text("下载更新", style = StarToolType.Body)
                 }
             },
             dismissButton = {

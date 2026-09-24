@@ -109,6 +109,19 @@ class AppContainer(context: Context) {
         )
     }
 
+    /** P2：应用内下载编排器。下载目录用应用专属外部存储，无需任何存储权限。 */
+    val updateDownloadManager: app.startool.android.update.UpdateDownloadManager by lazy {
+        app.startool.android.update.UpdateDownloadManager(
+            downloadDirProvider = {
+                appContext.getExternalFilesDir("updates")
+                    ?: java.io.File(appContext.filesDir, "updates")
+            },
+            scope = appScope,
+            preferenceStore = updatePreferenceStore,
+            currentVersionCode = currentVersionCode,
+        )
+    }
+
     val feedbackManager: app.startool.android.feedback.FeedbackManager by lazy {
         app.startool.android.feedback.FeedbackManager(appContext)
     }
