@@ -1,8 +1,6 @@
 package app.startool.android
 
 import android.app.Activity
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -21,9 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -66,6 +61,9 @@ import app.startool.android.ui.theme.StarToolDimens
 import app.startool.android.ui.theme.StarToolType
 import app.startool.android.update.model.UpdateCheckResult
 import app.startool.android.update.model.UpdateManifest
+import app.startool.android.update.model.UpdateDownloadState
+import app.startool.android.ui.update.UpdateDialog
+import app.startool.android.ui.update.rememberUpdateDownloadAction
 import kotlinx.coroutines.launch
 
 enum class MainTab { Record, History }
@@ -116,6 +114,22 @@ fun StarToolRoot(container: AppContainer) {
 
     val showSnackbar: suspend (String) -> Unit = { msg ->
         scope.launch { snackbarHostState.showSnackbar(msg) }.join()
+    }
+
+    // P4：统一的「下载更新」动作（优先应用内下载，拿不到官方直链时降级跳浏览器）
+    val downloadUpdate = rememberUpdateDownloadAction(container, showSnackbar)
+
+    // 下载状态：横幅副标题实时反映进度（下载跑在 appScope，离开页面不中断）
+    val downloadState by container.updateDownloadManager.state.collectAsState()
+
+    // P3：冷启动补发的上次安装结局（已更新 / 未完成），展示一次后消费掉
+    val postUpdateNotice by container.updateDownloadManager.postUpdateNotice.collectAsState()
+    LaunchedEffect(postUpdateNotice) {
+        val notice = postUpdateNotice
+        if (notice != null) {
+            snackbarHostState.showSnackbar(notice)
+            container.updateDownloadManager.consumePostUpdateNotice()
+        }
     }
 
     if (settingsOpen) {
@@ -212,7 +226,14 @@ fun StarToolRoot(container: AppContainer) {
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                     Text(
-                                        text = "点击查看更新说明并前往 GitHub 下载",
+                                        text = when (val s = downloadState) {
+                                            is UpdateDownloadState.Downloading ->
+                                                s.fraction?.let { "正在下载 ${(it * 100).toInt()}%" }
+                                                    ?: "正在下载… 已完成 ${s.loadedBytes / 1024} KB"
+                                            is UpdateDownloadState.Verifying -> "正在校验安装包完整性…"
+                                            is UpdateDownloadState.Ready -> "已下载完成，可在设置页安装"
+                                            else -> "点击查看更新说明，支持应用内下载安装"
+                                        },
                                         style = StarToolType.Caption,
                                         color = StarToolColors.TextSecondary,
                                     )
@@ -316,80 +337,28 @@ fun StarToolRoot(container: AppContainer) {
             onDismiss = { container.feedbackManager.closeFeedback() },
         )
 
-        // 横幅点击后的更新详情弹窗
+        // 横幅点击后的更新详情弹窗（P4：与设置页共用 ui/update/UpdateDialog）
         val manifestForDialog = discoveredUpdate
         if (showUpdateDetailsDialog && manifestForDialog != null) {
-            AlertDialog(
-                onDismissRequest = { showUpdateDetailsDialog = false },
-                modifier = Modifier.testTag("update_dialog"),
-                title = {
-                    Text(
-                        text = "发现新版本 ${manifestForDialog.versionName}",
-                        style = StarToolType.HourTitle,
-                        modifier = Modifier.testTag("update_dialog_title"),
-                    )
+            UpdateDialog(
+                manifest = manifestForDialog,
+                onDownload = {
+                    showUpdateDetailsDialog = false
+                    downloadUpdate(manifestForDialog)
                 },
-                text = {
-                    Column {
-                        Text(
-                            text = "更新说明：\n" + manifestForDialog.notes,
-                            style = StarToolType.Body,
-                            modifier = Modifier.testTag("update_dialog_notes"),
-                        )
-                    }
+                onRemindLater = {
+                    showUpdateDetailsDialog = false
+                    bannerDismissed = true
+                    container.updateChecker.clearDiscoveredUpdate()
+                    container.updateChecker.markRemindLater()
                 },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showUpdateDetailsDialog = false
-                            try {
-                                val targetUrl = container.updateChecker.getEffectiveReleaseUrl(manifestForDialog)
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (t: Throwable) {
-                                scope.launch { showSnackbar("无法调起浏览器下载") }
-                            }
-                        },
-                        modifier = Modifier.testTag("update_dialog_download"),
-                        colors = ButtonDefaults.buttonColors(containerColor = StarToolColors.Primary),
-                    ) {
-                        Text("前往下载", style = StarToolType.Body)
-                    }
+                onIgnore = {
+                    showUpdateDetailsDialog = false
+                    bannerDismissed = true
+                    container.updateChecker.clearDiscoveredUpdate()
+                    container.updateChecker.ignoreVersion(manifestForDialog.versionCode)
                 },
-                dismissButton = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(StarToolDimens.SpaceXs)) {
-                        TextButton(
-                            onClick = {
-                                showUpdateDetailsDialog = false
-                                bannerDismissed = true
-                                container.updateChecker.clearDiscoveredUpdate()
-                                container.updateChecker.markRemindLater()
-                            },
-                            modifier = Modifier.testTag("update_dialog_remind_later"),
-                        ) {
-                            Text("稍后提醒", style = StarToolType.Caption)
-                        }
-                        TextButton(
-                            onClick = {
-                                showUpdateDetailsDialog = false
-                                bannerDismissed = true
-                                container.updateChecker.clearDiscoveredUpdate()
-                                container.updateChecker.ignoreVersion(manifestForDialog.versionCode)
-                            },
-                            modifier = Modifier.testTag("update_dialog_ignore"),
-                        ) {
-                            Text("忽略此版本", style = StarToolType.Caption)
-                        }
-                        TextButton(
-                            onClick = { showUpdateDetailsDialog = false },
-                            modifier = Modifier.testTag("update_dialog_close"),
-                        ) {
-                            Text("关闭", style = StarToolType.Caption)
-                        }
-                    }
-                },
+                onDismiss = { showUpdateDetailsDialog = false },
             )
         }
     }
