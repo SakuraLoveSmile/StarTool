@@ -20,19 +20,42 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android platform
-        run: sdkmanager "platforms;android-36"
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 使用 runner 预装的 Android SDK。
+          # 不使用 android-actions/setup-android：它会执行已从 cmdline-tools
+          # 中移除的 `sdkmanager tools`（"Failed to find package 'tools'"）导致失败。
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT"
+          SDKMANAGER=""
+          for cand in "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+                      "$SDK_ROOT"/cmdline-tools/[0-9]*/bin/sdkmanager \
+                      "$SDK_ROOT/tools/bin/sdkmanager"; do
+            if [ -x "$cand" ]; then SDKMANAGER="$cand"; break; fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $SDK_ROOT"
+            exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          # AGP 8.13.1 默认 buildToolsVersion=35.0.0，compileSdk=36，两者都要装。
+          "$SDKMANAGER" "platforms;android-36" || true
+          "$SDKMANAGER" "build-tools;35.0.0" || true
+          "$SDKMANAGER" "build-tools;36.0.0" || true
+          "$SDKMANAGER" "platform-tools" || true
+          echo "Installed platforms:"
+          ls -la "$SDK_ROOT/platforms" || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
