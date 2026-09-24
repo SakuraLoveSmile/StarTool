@@ -306,7 +306,7 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(StarToolDimens.SpaceSm))
                 Text(
-                    text = "版本：0.1.0 (versionCode 1)\n" +
+                    text = "版本：${container.currentVersionName} (versionCode ${container.currentVersionCode})\n" +
                         "平台：Android 原生 Jetpack Compose\n" +
                         "存储：仅保存在本机数据库，无账号、无网络连接、无广告。\n" +
                         "说明：评分仅反映个人主观状态自评，不作为医学或生理健康诊断结论。如需卸载应用，请先导出备份文件。",
@@ -335,7 +335,7 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(StarToolDimens.SpaceXs))
                 Text(
-                    text = "当前版本：0.1.0 (versionCode 1)\n发布来源：SakuraLoveSmile/StarTool 稳定版 Releases",
+                    text = "当前版本：${container.currentVersionName} (versionCode ${container.currentVersionCode})\n发布来源：SakuraLoveSmile/StarTool 稳定版 Releases",
                     style = StarToolType.Caption,
                     color = StarToolColors.TextSecondary,
                 )
