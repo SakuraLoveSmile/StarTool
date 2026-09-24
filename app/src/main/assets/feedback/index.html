@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>StarTool 反馈</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    feedback-widget {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <feedback-widget id="fb-widget" show-launcher="false" launcher-mode="orb" capture-mode="off"></feedback-widget>
+
+  <script src="./feedback-web.umd.js"></script>
+  <script>
+    // 提前定义全局方法，避免原生早于 DOM 准备好时调用报错
+    window.startoolSetPage = function(page) {
+      const w = document.getElementById('fb-widget');
+      if (w) w.pageLabel = page;
+    };
+
+    (function() {
+      const widget = document.getElementById('fb-widget');
+      const params = new URLSearchParams(window.location.search);
+
+      const apiBase = params.get('apiBase') || 'https://feedback.xn--fhqths51enha.cn';
+      const appId = params.get('appId') || 'com.sakurasep.startool';
+      const appVersion = params.get('appVersion') || '0.1.0';
+      const pageLabel = params.get('page') || '记录';
+
+      widget.apiBase = apiBase;
+      widget.appId = appId;
+      widget.appVersion = appVersion;
+      widget.pageLabel = pageLabel;
+
+      // 原生桥接对象
+      const native = window.StarToolFeedbackNative;
+
+      // 诊断提供器
+      if (native && typeof native.getDiagnostics === 'function') {
+        try {
+          const diagStr = native.getDiagnostics();
+          if (diagStr) {
+            const diag = JSON.parse(diagStr);
+            if (widget.diagnosticsRecorder) {
+              widget.diagnosticsRecorder.record('app_info', 'diagnostics', diag);
+            }
+          }
+        } catch (e) {
+          console.warn('[StarTool] Failed to inject diagnostics', e);
+        }
+      }
+
+      // 宿主桥接口
+      const hostBridge = {
+        sessionStore: {
+          loadSession: function() {
+            if (native && typeof native.getSession === 'function') {
+              try {
+                const s = native.getSession(apiBase, appId);
+                if (s) {
+                  return JSON.parse(s);
+                }
+              } catch (e) {
+                console.error('[StarTool] getSession error', e);
+              }
+            }
+            return null;
+          },
+          saveSession: function(session) {
+            if (native && typeof native.saveSession === 'function') {
+              try {
+                native.saveSession(apiBase, appId, session.accessToken, session.expiresAt);
+              } catch (e) {
+                console.error('[StarTool] saveSession error', e);
+              }
+            }
+          },
+          clearSession: function() {
+            if (native && typeof native.clearSession === 'function') {
+              try {
+                native.clearSession(apiBase, appId);
+              } catch (e) {
+                console.error('[StarTool] clearSession error', e);
+              }
+            }
+          }
+        },
+        onPanelOpen: function(detail) {
+          if (native && typeof native.onPanelStateChanged === 'function') {
+            native.onPanelStateChanged(true);
+          }
+        },
+        onPanelClose: function() {
+          if (native && typeof native.onPanelStateChanged === 'function') {
+            native.onPanelStateChanged(false);
+          }
+        },
+        onSaveAttachment: function(file) {
+          if (native && typeof native.saveAttachment === 'function') {
+            native.saveAttachment(file.name || 'attachment', file.mimeType || 'application/octet-stream', file.dataUrl || '');
+          }
+        },
+        onOpenExternal: function(url) {
+          if (native && typeof native.openExternal === 'function') {
+            native.openExternal(url);
+          } else {
+            window.open(url, '_blank');
+          }
+        }
+      };
+
+      widget.hostBridge = hostBridge;
+      widget.sessionStore = hostBridge.sessionStore;
+
+      // 监听面板关闭与打开事件
+      widget.addEventListener('feedback-panel-open', function(e) {
+        if (native && typeof native.onPanelStateChanged === 'function') {
+          native.onPanelStateChanged(true);
+        }
+      });
+      widget.addEventListener('feedback-panel-close', function(e) {
+        if (native && typeof native.onPanelStateChanged === 'function') {
+          native.onPanelStateChanged(false);
+        }
+      });
+
+      // 截图提供器支持
+      let pendingScreenshot = null;
+
+      widget.captureProvider = async function() {
+        if (pendingScreenshot) {
+          const res = pendingScreenshot;
+          return res;
+        }
+        if (native && typeof native.requestRetakeScreenshot === 'function') {
+          const base64 = await native.requestRetakeScreenshot();
+          if (base64) {
+            return dataUrlToCaptureResult(base64);
+          }
+        }
+        throw new Error('No capture available');
+      };
+
+      function dataUrlToBlob(dataUrl) {
+        const parts = dataUrl.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const bin = atob(parts[1]);
+        const len = bin.length;
+        const u8arr = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          u8arr[i] = bin.charCodeAt(i);
+        }
+        return new Blob([u8arr], { type: mime });
+      }
+
+      function dataUrlToCaptureResult(dataUrl) {
+        return new Promise(function(resolve, reject) {
+          try {
+            const blob = dataUrlToBlob(dataUrl);
+            const img = new Image();
+            img.onload = function() {
+              resolve({
+                blob: blob,
+                width: img.naturalWidth,
+                height: img.naturalHeight,
+                viewport: { width: window.innerWidth, height: window.innerHeight },
+                sameFrameMasking: true,
+                maskedRegions: []
+              });
+            };
+            img.onerror = function(err) {
+              reject(err);
+            };
+            img.src = dataUrl;
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+
+      // 暴露全局给原生调用的方法
+      window.startoolHandleBackPressed = function() {
+        if (typeof widget.handleBackPressed === 'function') {
+          return widget.handleBackPressed();
+        }
+        if (widget.isOpen) {
+          widget.close();
+          return true;
+        }
+        return false;
+      };
+
+      window.startoolOpenWithCapture = async function(dataUrl) {
+        try {
+          if (dataUrl) {
+            pendingScreenshot = await dataUrlToCaptureResult(dataUrl);
+            await widget.captureAndOpen();
+          } else {
+            pendingScreenshot = null;
+            widget.open();
+          }
+        } catch (e) {
+          console.error('[StarTool] openWithCapture failed', e);
+          widget.open();
+        }
+      };
+
+      window.startoolOpenWithoutCapture = function() {
+        pendingScreenshot = null;
+        widget.open();
+      };
+
+      window.startoolSetPage = function(page) {
+        widget.pageLabel = page;
+      };
+
+      // 通知原生网页已准备就绪
+      if (native && typeof native.onPageReady === 'function') {
+        native.onPageReady();
+      }
+    })();
+  </script>
+</body>
+</html>

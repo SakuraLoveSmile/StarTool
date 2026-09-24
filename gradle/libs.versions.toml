@@ -13,6 +13,7 @@ androidxTestRunner = "1.6.2"
 androidxTestJunit = "1.2.1"
 espresso = "3.6.1"
 orgJson = "20250517"
+webkit = "1.12.1"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
@@ -38,6 +39,7 @@ androidx-test-runner = { module = "androidx.test:runner", version.ref = "android
 androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestJunit" }
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 org-json = { module = "org.json:json", version.ref = "orgJson" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
