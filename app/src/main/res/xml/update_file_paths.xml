@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 暴露的路径白名单，仅供「PackageInstaller 提交失败时
+  降级为系统安装器」这一条兜底链路使用（ApkInstaller.fallbackViewIntent）。
+  下载目录放在应用专属外部存储，无需任何存储权限。
+-->
+<paths>
+    <external-files-path
+        name="update_apks_external"
+        path="updates/" />
+    <files-path
+        name="update_apks_internal"
+        path="updates/" />
+    <cache-path
+        name="update_apks_cache"
+        path="updates/" />
+</paths>

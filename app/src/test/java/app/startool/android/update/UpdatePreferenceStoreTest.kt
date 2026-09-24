@@ -62,4 +62,32 @@ class UpdatePreferenceStoreTest {
         assertEquals(UpdateProxySource.Custom, store.proxySource)
         assertEquals("https://custom.proxy.org", store.customProxyPrefix)
     }
+
+    @Test
+    fun testInstallReceiptDefaultsAreNull() {
+        val store = UpdatePreferenceStore.inMemory()
+        assertNull(store.pendingInstallTargetVersionCode)
+        assertNull(store.pendingInstallTargetVersionName)
+        assertNull(store.lastInstallError)
+    }
+
+    @Test
+    fun testInstallReceiptRoundTrip() {
+        val store = UpdatePreferenceStore.inMemory(
+            pendingInstallTargetVersionCode = 7,
+            pendingInstallTargetVersionName = "0.1.7",
+            lastInstallError = "安装包签名与本机已装应用不一致",
+        )
+        assertEquals(7, store.pendingInstallTargetVersionCode)
+        assertEquals("0.1.7", store.pendingInstallTargetVersionName)
+        assertEquals("安装包签名与本机已装应用不一致", store.lastInstallError)
+
+        // 置空后必须真的读出 null，而不是 0 / 空串（冷启动回执依赖这个语义）
+        store.pendingInstallTargetVersionCode = null
+        store.pendingInstallTargetVersionName = null
+        store.lastInstallError = null
+        assertNull(store.pendingInstallTargetVersionCode)
+        assertNull(store.pendingInstallTargetVersionName)
+        assertNull(store.lastInstallError)
+    }
 }
