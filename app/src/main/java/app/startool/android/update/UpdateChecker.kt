@@ -248,11 +248,23 @@ class UpdateChecker(
             return RawFetchResult.NoReleaseFound
         }
         var downloadUrl: String? = null
+        var detectedApkUrl: String? = null
+        var detectedApkSize: Long? = null
+        // 注意不能 break：APK 资产可能排在清单资产之前，必须扫完全部 assets。
         for (i in 0 until assets.length()) {
             val asset = assets.optJSONObject(i) ?: continue
-            if (asset.optString("name") == MANIFEST_ASSET_NAME) {
+            val assetName = asset.optString("name")
+            if (assetName == MANIFEST_ASSET_NAME) {
                 downloadUrl = asset.optString("browser_download_url")
-                break
+                continue
+            }
+            // P1：顺带捕获 APK 直链与体积，作为清单缺少 apkUrl 时的兜底下载源。
+            if (assetName.endsWith(".apk", ignoreCase = true)) {
+                val candidate = asset.optString("browser_download_url")
+                if (candidate.startsWith(ApkSourceResolver.OFFICIAL_DOWNLOAD_PREFIX)) {
+                    detectedApkUrl = candidate
+                    detectedApkSize = asset.optLong("size").takeIf { it > 0L }
+                }
             }
         }
         if (downloadUrl.isNullOrBlank()) {
@@ -282,7 +294,13 @@ class UpdateChecker(
         }
         val manifest = UpdateManifest.fromJson(assetBody)
             ?: return RawFetchResult.InvalidManifest("清单格式错误")
-        return RawFetchResult.Success(manifest)
+        // P1：清单自身没有 apkUrl/apkSizeBytes 时，用刚从 release assets 解析到的直链补齐，
+        // 这样老清单（schemaVersion 1）也能走应用内下载。
+        val enriched = manifest.copy(
+            apkUrl = manifest.apkUrl ?: detectedApkUrl,
+            apkSizeBytes = manifest.apkSizeBytes ?: detectedApkSize,
+        )
+        return RawFetchResult.Success(enriched)
     }
     private fun evaluateManifest(manifest: UpdateManifest, isManual: Boolean): UpdateCheckResult {
         if (manifest.applicationId != currentApplicationId) {
