@@ -57,14 +57,61 @@ jobs:
           echo "Installed platforms:"
           ls -la "$SDK_ROOT/platforms" || true
 
+      # P0：还原固定签名密钥。Secrets 未配置时优雅降级为 debug 签名，
+      # 构建照常通过，但会在日志里明确警告覆盖安装会失败。
+      - name: Restore release keystore (optional)
+        shell: bash
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "::notice::未配置 RELEASE_KEYSTORE_BASE64 -> release 回退 debug 签名。runner 每次生成随机密钥，两次发布的签名不一致，应用内覆盖安装会报 INSTALL_FAILED_UPDATE_INCOMPATIBLE。"
+            exit 0
+          fi
+          if [ -z "$RELEASE_KEY_ALIAS" ] || [ -z "$RELEASE_STORE_PASSWORD" ] || [ -z "$RELEASE_KEY_PASSWORD" ]; then
+            echo "::warning::RELEASE_KEYSTORE_BASE64 已配置，但 RELEASE_KEY_ALIAS / RELEASE_STORE_PASSWORD / RELEASE_KEY_PASSWORD 有缺项 -> 仍回退 debug 签名。"
+            exit 0
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          if [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "::error::keystore 解码结果为空"
+            exit 1
+          fi
+          echo "RELEASE_STORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "Restored release keystore ($(wc -c < "$KEYSTORE_PATH") bytes) -> 使用固定签名"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run unit tests
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+        env:
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
+      # generateUpdateManifest 依赖 packageRelease，会把 APK 的
+      # sha256 / 体积 / 直链写进 startool-update.json（P1）
       - name: Build release APK
         run: ./gradlew --no-daemon --stacktrace assembleRelease generateUpdateManifest
+        env:
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+
+      - name: Verify signing is stable
+        shell: bash
+        run: |
+          BT="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          CERT="$("$BT/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk 2>/dev/null | grep 'SHA-256 digest' | head -1)"
+          echo "release APK signer: $CERT"
+          if [ -z "${RELEASE_STORE_FILE:-}" ]; then
+            echo "::warning::本次构建使用临时 debug 签名，产物无法覆盖安装历史版本。请配置 RELEASE_* Secrets。"
+          fi
 
       - name: Collect artifacts
         run: |

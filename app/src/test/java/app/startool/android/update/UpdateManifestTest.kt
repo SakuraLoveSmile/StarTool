@@ -73,4 +73,86 @@ class UpdateManifestTest {
         val jsonWithNull = sampleJson.replace("\"versionCode\": 2", "\"versionCode\": null")
         assertNull(UpdateManifest.fromJson(jsonWithNull))
     }
+
+    @Test
+    fun testParseOptionalApkFields() {
+        val json = """
+            {
+              "schemaVersion": 2,
+              "applicationId": "app.startool.android.gemini",
+              "versionCode": 3,
+              "versionName": "0.1.2",
+              "minSdk": 26,
+              "notes": "n",
+              "releaseUrl": "https://github.com/SakuraLoveSmile/StarTool/releases/tag/v0.1.2",
+              "apkUrl": "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.1.2/StarTool-v0.1.2-release.apk",
+              "apkSha256": "ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789",
+              "apkSizeBytes": 8575734
+            }
+        """.trimIndent()
+        val manifest = UpdateManifest.fromJson(json)
+        assertNotNull(manifest)
+        assertEquals(
+            "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.1.2/StarTool-v0.1.2-release.apk",
+            manifest?.apkUrl,
+        )
+        // 哈希统一归一成小写，便于下载后直接比对
+        assertEquals("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", manifest?.apkSha256)
+        assertEquals(8575734L, manifest?.apkSizeBytes)
+    }
+
+    @Test
+    fun testBackwardCompatibleWhenApkFieldsAbsent() {
+        // schemaVersion 1 的旧清单必须照常解析，新字段为 null
+        val manifest = UpdateManifest.fromJson(sampleJson)
+        assertNotNull(manifest)
+        assertNull(manifest?.apkUrl)
+        assertNull(manifest?.apkSha256)
+        assertNull(manifest?.apkSizeBytes)
+    }
+
+    @Test
+    fun testNullApkFieldsDoNotBreakParsing() {
+        val json = """
+            {
+              "schemaVersion": 1,
+              "applicationId": "app.startool.android.gemini",
+              "versionCode": 2,
+              "versionName": "0.2.0",
+              "minSdk": 26,
+              "notes": "更新说明内容...",
+              "releaseUrl": "https://github.com/SakuraLoveSmile/StarTool/releases/tag/v0.2.0",
+              "apkUrl": null,
+              "apkSha256": null,
+              "apkSizeBytes": null
+            }
+        """.trimIndent()
+        val manifest = UpdateManifest.fromJson(json)
+        assertNotNull(manifest)
+        assertNull(manifest?.apkUrl)
+        assertNull(manifest?.apkSizeBytes)
+    }
+
+    @Test
+    fun testRoundtripWithApkFields() {
+        val original = UpdateManifest(
+            schemaVersion = 2,
+            applicationId = "app.startool.android.gemini",
+            versionCode = 7,
+            versionName = "0.3.0",
+            minSdk = 26,
+            notes = "n",
+            releaseUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/tag/v0.3.0",
+            apkUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.3.0/StarTool-v0.3.0-release.apk",
+            apkSha256 = "c".repeat(64),
+            apkSizeBytes = 12345L,
+        )
+        assertEquals(original, UpdateManifest.fromJson(original.toJson()))
+    }
+
+    @Test
+    fun testRoundtripWithoutApkFields() {
+        val original = UpdateManifest.fromJson(sampleJson)!!
+        assertEquals(original, UpdateManifest.fromJson(original.toJson()))
+    }
 }

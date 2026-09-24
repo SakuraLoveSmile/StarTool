@@ -477,6 +477,123 @@ class UpdateCheckerTest {
         val result = checker.checkUpdate(isManual = true)
         assertTrue(result is UpdateCheckResult.NoReleaseFound)
     }
+    @Test
+    fun testApkAssetCapturedWhenManifestLacksApkUrl() = runTest {
+        val assetUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/startool-update.json"
+        val apkUrl =
+            "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/StarTool-v0.2.0-release.apk"
+        // APK 资产刻意排在清单资产之前，用于验证扫描不会提前 break
+        val releaseJson = """
+            {
+              "tag_name": "v0.2.0",
+              "assets": [
+                {
+                  "name": "StarTool-v0.2.0-release.apk",
+                  "browser_download_url": "$apkUrl",
+                  "size": 123456
+                },
+                {
+                  "name": "startool-update.json",
+                  "browser_download_url": "$assetUrl"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        fetcher.handler = { url ->
+            when (url) {
+                UpdateChecker.DEFAULT_UPDATE_URL -> HttpResponse(200, releaseJson)
+                assetUrl -> HttpResponse(200, sampleManifest.toJson())
+                else -> HttpResponse(404, null)
+            }
+        }
+
+        val checker = createChecker()
+        val result = checker.checkUpdate(isManual = true)
+        assertTrue(result is UpdateCheckResult.UpdateAvailable)
+        val manifest = (result as UpdateCheckResult.UpdateAvailable).manifest
+        assertEquals(apkUrl, manifest.apkUrl)
+        assertEquals(123456L, manifest.apkSizeBytes)
+    }
+
+    @Test
+    fun testManifestOwnApkUrlWinsOverDetectedAsset() = runTest {
+        val assetUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/startool-update.json"
+        val releaseJson = """
+            {
+              "tag_name": "v0.2.0",
+              "assets": [
+                {
+                  "name": "StarTool-v0.2.0-release.apk",
+                  "browser_download_url": "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/wrong.apk",
+                  "size": 1
+                },
+                {
+                  "name": "startool-update.json",
+                  "browser_download_url": "$assetUrl"
+                }
+              ]
+            }
+        """.trimIndent()
+        val manifestWithApk = sampleManifest.copy(
+            apkUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/right.apk",
+            apkSizeBytes = 99L,
+        )
+
+        fetcher.handler = { url ->
+            when (url) {
+                UpdateChecker.DEFAULT_UPDATE_URL -> HttpResponse(200, releaseJson)
+                assetUrl -> HttpResponse(200, manifestWithApk.toJson())
+                else -> HttpResponse(404, null)
+            }
+        }
+
+        val checker = createChecker()
+        val result = checker.checkUpdate(isManual = true)
+        assertTrue(result is UpdateCheckResult.UpdateAvailable)
+        val manifest = (result as UpdateCheckResult.UpdateAvailable).manifest
+        // 清单自带的直链优先，不能被 release assets 里的同名资产覆盖
+        assertEquals("https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/right.apk", manifest.apkUrl)
+        assertEquals(99L, manifest.apkSizeBytes)
+    }
+
+    @Test
+    fun testNonOfficialApkAssetIsIgnored() = runTest {
+        val assetUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/download/v0.2.0/startool-update.json"
+        val releaseJson = """
+            {
+              "tag_name": "v0.2.0",
+              "assets": [
+                {
+                  "name": "StarTool-v0.2.0-release.apk",
+                  "browser_download_url": "https://evil.example.com/fake.apk",
+                  "size": 1
+                },
+                {
+                  "name": "startool-update.json",
+                  "browser_download_url": "$assetUrl"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        fetcher.handler = { url ->
+            when (url) {
+                UpdateChecker.DEFAULT_UPDATE_URL -> HttpResponse(200, releaseJson)
+                assetUrl -> HttpResponse(200, sampleManifest.toJson())
+                else -> HttpResponse(404, null)
+            }
+        }
+
+        val checker = createChecker()
+        val result = checker.checkUpdate(isManual = true)
+        assertTrue(result is UpdateCheckResult.UpdateAvailable)
+        val manifest = (result as UpdateCheckResult.UpdateAvailable).manifest
+        // 非官方域名的资产不能进入下载源，客户端应降级到跳浏览器
+        assertNull(manifest.apkUrl)
+        assertNull(ApkSourceResolver(UpdatePreferenceStore.inMemory()).resolve(manifest))
+    }
+
 }
 
 class FakeHttpFetcher : HttpFetcher {

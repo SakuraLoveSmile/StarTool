@@ -8,3 +8,9 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# 签名密钥（P0）：绝不入库
+keystore.properties
+*.keystore
+*.jks
+*.p12
