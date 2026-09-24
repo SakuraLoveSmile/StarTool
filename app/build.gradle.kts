@@ -188,7 +188,14 @@ tasks.register("generateUpdateManifest") {
     val apkFile = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
 
     doLast {
-        val releaseUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/tag/v$name"
+        // releaseUrl 必须指向「本次真正发布的 tag」，不能由 versionName 推导：
+        // 两者不一致时（例如热修复只改 tag），清单里的链接会指向另一个旧 release。
+        val releaseTag = if (System.getenv("GITHUB_REF_TYPE") == "tag") {
+            System.getenv("GITHUB_REF_NAME") ?: "v$name"
+        } else {
+            "v$name"
+        }
+        val releaseUrl = "https://github.com/SakuraLoveSmile/StarTool/releases/tag/$releaseTag"
 
         val targetDir = outDir.get().asFile
         targetDir.mkdirs()
@@ -216,8 +223,7 @@ tasks.register("generateUpdateManifest") {
             // 本地 / workflow_dispatch 构建的资产名是 StarTool-<run>-release.apk，
             // 留空让客户端回退到 GitHub API 的 assets 解析，避免给出错误地址。
             if (System.getenv("GITHUB_REF_TYPE") == "tag") {
-                val tag = System.getenv("GITHUB_REF_NAME") ?: "v$name"
-                apkUrlLine = ",\n          \"apkUrl\": \"https://github.com/SakuraLoveSmile/StarTool/releases/download/$tag/StarTool-$tag-release.apk\""
+                apkUrlLine = ",\n          \"apkUrl\": \"https://github.com/SakuraLoveSmile/StarTool/releases/download/$releaseTag/StarTool-$releaseTag-release.apk\""
             }
         } else {
             logger.warn("APK 未找到，清单省略 apkSha256/apkSizeBytes/apkUrl: ${apk.absolutePath}")
