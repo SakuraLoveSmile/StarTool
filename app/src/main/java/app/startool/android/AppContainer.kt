@@ -109,7 +109,12 @@ class AppContainer(context: Context) {
         )
     }
 
-    /** P2：应用内下载编排器。下载目录用应用专属外部存储，无需任何存储权限。 */
+    /** P3：系统安装器封装（PackageInstaller 会话提交 + 授权检测）。 */
+    val apkInstaller: app.startool.android.update.ApkInstaller by lazy {
+        app.startool.android.update.ApkInstaller(appContext)
+    }
+
+    /** P2/P3：应用内下载 + 安装编排器。下载目录用应用专属外部存储，无需任何存储权限。 */
     val updateDownloadManager: app.startool.android.update.UpdateDownloadManager by lazy {
         app.startool.android.update.UpdateDownloadManager(
             downloadDirProvider = {
@@ -119,6 +124,7 @@ class AppContainer(context: Context) {
             scope = appScope,
             preferenceStore = updatePreferenceStore,
             currentVersionCode = currentVersionCode,
+            installer = apkInstaller,
         )
     }
 

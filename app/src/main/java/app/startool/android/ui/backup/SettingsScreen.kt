@@ -1,5 +1,8 @@
 package app.startool.android.ui.backup
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,6 +48,7 @@ import androidx.compose.material3.TextButton
 import android.content.Intent
 import android.net.Uri
 import app.startool.android.update.model.UpdateCheckResult
+import app.startool.android.update.model.UpdateDownloadState
 import app.startool.android.update.model.UpdateManifest
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -119,6 +123,14 @@ fun SettingsScreen(
     val fabEnabled by container.feedbackManager.fabEnabled.collectAsState()
     // P2：应用内下载状态。由 container 单例持有，离开设置页不会丢失。
     val downloadState by container.updateDownloadManager.state.collectAsState()
+    // P3：「安装未知应用」授权返回后继续刚才中断的安装
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (container.updateDownloadManager.canInstallWithoutPermission()) {
+            container.updateDownloadManager.onInstallPermissionGranted()
+        }
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -541,8 +553,33 @@ fun SettingsScreen(
                 // 离开设置页再回来不会丢失。
                 UpdateProgressSection(
                     state = downloadState,
-                    onCancel = { container.updateDownloadManager.cancel() },
+                    onCancel = {
+                        val mgr = container.updateDownloadManager
+                        when (mgr.state.value) {
+                            is UpdateDownloadState.Downloading,
+                            is UpdateDownloadState.Verifying,
+                            -> mgr.cancel()
+                            else -> mgr.reset()
+                        }
+                    },
                     onRetry = { container.updateDownloadManager.retry() },
+                    onInstall = {
+                        container.updateDownloadManager.startInstall()
+                        // 没有授权时状态会变成 AwaitingInstallPermission，此时拉起授权页
+                        if (container.updateDownloadManager.state.value
+                            is UpdateDownloadState.AwaitingInstallPermission
+                        ) {
+                            container.updateDownloadManager.unknownSourcesSettingsIntent()
+                                ?.let { installPermissionLauncher.launch(it) }
+                        }
+                    },
+                    onGoToInstallSettings = {
+                        container.updateDownloadManager.unknownSourcesSettingsIntent()
+                            ?.let { installPermissionLauncher.launch(it) }
+                    },
+                    onRetryInstall = { container.updateDownloadManager.retryInstall() },
+                    onRestartApp = { container.updateDownloadManager.restartApp() },
+                    onDismissInstallResult = { container.updateDownloadManager.dismissInstallResult() },
                     modifier = Modifier.testTag("settings_update_download_section"),
                 )
             }

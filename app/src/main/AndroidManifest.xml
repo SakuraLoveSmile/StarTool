@@ -3,6 +3,9 @@
 
     <!-- 网络权限：仅用于检查更新与 Feedback 问题反馈，主记录和历史数据继续保持 100% 本地离线。 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- P3 应用内更新：允许发起「安装未知应用」流程。这是普通权限，声明即生效；
+         真正的闸门是运行时的 PackageManager.canRequestPackageInstalls()。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".StarToolApplication"
@@ -22,6 +25,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- P3：把下载好的 APK 以 content:// URI 交给系统安装器（兜底链路）。
+             authorities 必须与 ApkInstaller.FILE_PROVIDER_SUFFIX 拼出的结果一致。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
+
+        <!-- P3：PackageInstaller 会话状态回执。
+             通过 PendingIntent 触发，无需 intent-filter，保持 exported=false。 -->
+        <receiver
+            android:name=".update.InstallStatusReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
