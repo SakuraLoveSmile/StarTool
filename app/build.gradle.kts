@@ -76,8 +76,8 @@ android {
         applicationId = "app.startool.android.gemini"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 端到端验收测试运行在独立 applicationId 的 e2e 构建类型上，
@@ -169,8 +169,8 @@ dependencies {
 }
 
 val manifestAppId = android.defaultConfig.applicationId ?: "app.startool.android.gemini"
-val manifestVersionCode = android.defaultConfig.versionCode ?: 2
-val manifestVersionName = android.defaultConfig.versionName ?: "0.1.1"
+val manifestVersionCode = android.defaultConfig.versionCode ?: 3
+val manifestVersionName = android.defaultConfig.versionName ?: "0.1.2"
 val manifestMinSdk = android.defaultConfig.minSdk ?: 26
 val manifestOutputDir = layout.buildDirectory.dir("outputs")
 
