@@ -77,6 +77,10 @@ class AppContainer(context: Context) {
         app.startool.android.update.UpdatePreferenceStore(sp)
     }
 
+    // 注意：下面两个 catch 分支的兜底字面量必须与 app/build.gradle.kts 的
+    // defaultConfig.versionCode / versionName 保持一致。否则 packageManager
+    // 异常时会拿旧版本号参与比对，导致每次启动都误报「发现新版本」。
+    // （此前提为 1 / "0.1.0"，与实际版本长期不一致。）
     val currentVersionCode: Int by lazy {
         try {
             val pInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
@@ -87,16 +91,16 @@ class AppContainer(context: Context) {
                 pInfo.versionCode
             }
         } catch (t: Throwable) {
-            1
+            3
         }
     }
 
     val currentVersionName: String by lazy {
         try {
             val pInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
-            pInfo.versionName ?: "0.1.0"
+            pInfo.versionName ?: "0.1.2"
         } catch (t: Throwable) {
-            "0.1.0"
+            "0.1.2"
         }
     }
 
