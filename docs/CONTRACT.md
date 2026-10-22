@@ -7,13 +7,13 @@
 ```bash
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-cd "/Users/developer/Documents/Code/Project/Personal Project/StarTool"
+cd "$(git rev-parse --show-toplevel)"
 ```
 
 - 构建：`./gradlew assembleDebug`（或 `compileDebugKotlin` 只编译）。
 - 单元测试：`./gradlew testDebugUnitTest`。
 - 设备测试：`./gradlew connectedE2eAndroidTest`（e2e 构建类型，applicationId `app.startool.android.e2e`，与试用包 `app.startool.android` 隔离）。
-- 本机已装 Android SDK 36、Build Tools 36.0.0；已连接小米 10（adb 序列号 EXAMPLEDEVICE，Android 16 / API 36）。
+- 本机已装 Android SDK 36、Build Tools 36.0.0；已连接小米 10（adb 序列号已脱敏，Android 16 / API 36）。
 - **禁止**修改全局 Java 配置；**禁止**降低 minSdk/删除测试来让构建通过；构建失败先报告给主 agent。
 
 ## 2. 模块独占边界（严格遵守）
